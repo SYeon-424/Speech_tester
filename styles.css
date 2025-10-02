@@ -118,3 +118,37 @@ footer{margin-top:10px;}
   .score-ring{--ring:56px;}           /* 모바일에서 더 작게 */
   .score-ring .txt{font-size:.9rem;}
 }
+
+/* === ultra-compact score ring on mobile === */
+@media (max-width: 600px){
+  .score-wrap{ gap:6px; flex-wrap: wrap; }
+
+  .score-ring{
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 50%;
+    /* 도넛 두께도 얇게 */
+    background:
+      conic-gradient(var(--primary) calc(var(--p)*1%), rgba(255,255,255,.08) 0),
+      radial-gradient(closest-side, #0f1320 86%, transparent 87% 100%),
+      linear-gradient(180deg, rgba(255,255,255,.08), rgba(0,0,0,.12));
+  }
+  .score-ring .txt{ font-size: .72rem !important; }
+}
+
+@media (max-width: 400px){
+  .score-ring{
+    width: 28px !important;
+    height: 28px !important;
+    /* 더 얇게 */
+    background:
+      conic-gradient(var(--primary) calc(var(--p)*1%), rgba(255,255,255,.08) 0),
+      radial-gradient(closest-side, #0f1320 88%, transparent 89% 100%),
+      linear-gradient(180deg, rgba(255,255,255,.08), rgba(0,0,0,.12));
+  }
+  /* 숫자는 너무 작아지니 아이콘처럼만 보이게 숨김 */
+  .score-ring .txt{ display: none !important; }
+  /* 범례/뱃지도 더 컴팩트 */
+  .score-legend{ gap:6px; }
+  .badge{ padding:1px 4px; font-size:.74rem; border-radius:8px; }
+}
