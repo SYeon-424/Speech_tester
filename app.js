@@ -133,9 +133,6 @@ function setMetrics({lenRef, lenHyp, score, refHTML, hypHTML, notes}) {
   els.refVis.innerHTML   = refHTML ?? '';
   els.hypVis.innerHTML   = hypHTML ?? '';
   els.notes.innerHTML    = notes ?? '';
-
-  // 점수 링 채우기
-  setScoreRing(score);
 }
 
 // ===== Mic & STT + Scoring (single source of truth) =====
