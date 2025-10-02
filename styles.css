@@ -115,7 +115,7 @@ button:disabled{ opacity:.55; cursor:not-allowed; }
   display:flex;
   align-items:center;
   justify-content:center;
-  width: 80px;     /* ← 원 크기 줄임 */
+  width: 50px; 
   height: 80px;
   border-radius: 50%;
   background: #1a1a1a;
