@@ -103,14 +103,25 @@ const els = {
   stripPunct: reqEl('strip-punct'),
   normalizeNum: reqEl('normalize-num'),
 };
-function setMetrics({lenRef,lenHyp,score,refHTML,hypHTML,notes}){
+function setScoreRing(pct){
+  const ring = document.getElementById('score-ring');
+  if(!ring) return;
+  const p = Math.max(0, Math.min(100, Number(pct) || 0));
+  ring.style.setProperty('--p', p);
+}
+
+function setMetrics({lenRef, lenHyp, score, refHTML, hypHTML, notes}) {
   els.lenRef.textContent = lenRef ?? '-';
   els.lenHyp.textContent = lenHyp ?? '-';
   els.score.textContent  = (score ?? '-').toString();
   els.refVis.innerHTML   = refHTML ?? '';
   els.hypVis.innerHTML   = hypHTML ?? '';
   els.notes.innerHTML    = notes ?? '';
+
+  // ✅ 점수 링도 같이 업데이트
+  setScoreRing(score);
 }
+
 
 // ===== Mic & STT =====
 let recog=null;           // SpeechRecognition instance
