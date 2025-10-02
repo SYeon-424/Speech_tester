@@ -144,26 +144,27 @@ function setMetrics({lenRef, lenHyp, score, refHTML, hypHTML, notes}) {
   setScoreRing(score);
 }
 
+// ===== Mic & STT + Scoring (single source of truth) =====
+let recog = null;            // SpeechRecognition
+let recording = false;       // 사용자가 Start~Stop 사이에 녹음 의사
+let recognizing = false;     // 엔진 onstart~onend
+let lastResultAt = 0;        // 결과 수신 시각(워치독용)
+let keepTimer = null;        // 워치독
+let retryCount = 0;          // 재시도 백오프
 
-// ===== Mic & STT (robust) =====
-let recog = null;           // SpeechRecognition instance
-let finalText = '';         // 최종 텍스트 스냅샷
-let recognizing = false;    // onstart~onend 사이 상태
-let wantRecording = false;  // 사용자가 Start~Stop 사이에 녹음 유지 의사
-let lastResultAt = 0;       // 마지막 결과 수신 시각(무음 워치용)
-let keepTimer = null;       // 워치독 타이머
-let retryCount = 0;         // 재시도 백오프 카운터
+// 텍스트 버퍼 (항상 '종료' 누를 때까지 누적해서 보관)
+let finalBuf = "";           // 최종(confirmed) 누적 텍스트
+let interimBuf = "";         // 진행 중(미확정) 텍스트 스냅샷
 
 function supported(){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   return !!SR;
 }
-
 async function ensureMicPermission(){
   if(!navigator.mediaDevices?.getUserMedia) return true;
   try{
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    stream.getTracks().forEach(t => t.stop());
+    const s = await navigator.mediaDevices.getUserMedia({audio:true});
+    s.getTracks().forEach(t=>t.stop());
     return true;
   }catch(e){
     log('getUserMedia error', e);
@@ -172,28 +173,12 @@ async function ensureMicPermission(){
   }
 }
 
-function startWatchdog(){
-  stopWatchdog();
-  // 4초 이상 결과가 없으면 재시작
-  keepTimer = setInterval(() => {
-    if (!wantRecording) return;
-    const idleMs = Date.now() - lastResultAt;
-    if (idleMs > 4000) {
-      log('watchdog idle', idleMs, '→ restart');
-      restartRecognizer();
-    }
-  }, 1500);
-}
-function stopWatchdog(){
-  if (keepTimer) { clearInterval(keepTimer); keepTimer = null; }
-}
-
+// ========== Recognizer ==========
 function createRecognizer(lang){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if(!SR){
     live.textContent = '이 브라우저는 음성 인식을 지원하지 않습니다. (Chrome/Edge 권장)';
-    btnStart.disabled = true;
-    return null;
+    btnStart.disabled = true; return null;
   }
   const r = new SR();
   r.lang = lang || (els.lang?.value || 'ko-KR');
@@ -212,16 +197,18 @@ function createRecognizer(lang){
   };
 
   r.onresult = (e) => {
+    // 결과는 "스냅샷"으로 재조립 → 중복/유실 방지
     const res = e.results;
-    let final = '', interim = '';
-    for (let i=0; i<res.length; i++){
+    let final = "", interim = "";
+    for (let i=0;i<res.length;i++){
       const txt = res[i][0].transcript;
       if (res[i].isFinal) final += txt + ' ';
       else interim += txt + ' ';
     }
-    finalText = final.trim();
-    live.textContent = finalText + (interim ? ' ' + interim.trim() : '');
-    lastResultAt = Date.now(); // 결과 들어오면 무음 타이머 리셋
+    finalBuf  = final.trim();          // 현재까지 확정본
+    interimBuf = interim.trim();       // 현재 진행 중
+    lastResultAt = Date.now();
+    live.textContent = (finalBuf + (interimBuf?(' '+interimBuf):'')).trim();
   };
 
   r.onerror = (e) => {
@@ -233,7 +220,8 @@ function createRecognizer(lang){
     } else if (e.error === 'no-speech') {
       els.notes.innerHTML = `<div class="muted">음성이 감지되지 않았습니다. (자동 재시도 중)</div>`;
     }
-    if (wantRecording) restartRecognizer();
+    // 사용자가 녹음 중이라면 자동 복구
+    if (recording) restartRecognizer();
   };
 
   r.onend = () => {
@@ -243,14 +231,13 @@ function createRecognizer(lang){
     btnStop.disabled = true;
     stopWatchdog();
     log('onend');
-    if (wantRecording) restartRecognizer(); // 정책/백그라운드로 끊겨도 복구
-  };
 
-  r.onspeechend = () => { /* 워치독이 관리하므로 noop */ };
+    // 사용자가 아직 녹음 원하면(정책/무음으로 끊긴 경우) 재시작
+    if (recording) restartRecognizer();
+  };
 
   return r;
 }
-
 function ensureRecognizer(){
   if (recog) return recog;
   recog = createRecognizer(els.lang?.value || 'ko-KR');
@@ -258,29 +245,44 @@ function ensureRecognizer(){
 }
 
 function restartRecognizer(){
-  if (!wantRecording) return;
+  if (!recording) return;
   const delay = Math.min(200 + retryCount*300, 2500);
   try { recog?.stop(); } catch {}
   setTimeout(() => {
-    try{
+    try {
       const r = ensureRecognizer();
       r && r.start();
-      retryCount = Math.min(retryCount + 1, 5);
+      retryCount = Math.min(retryCount+1, 5);
       log('restart attempt', retryCount, 'delay', delay);
-    }catch(e){
-      log('restart failed', e);
-    }
+    } catch (e) { log('restart failed', e); }
   }, delay);
 }
 
-els.lang?.addEventListener('change', () => {
+function startWatchdog(){
+  stopWatchdog();
+  keepTimer = setInterval(() => {
+    if (!recording) return;
+    if (Date.now() - lastResultAt > 4000) {
+      log('watchdog idle → restart');
+      restartRecognizer();
+    }
+  }, 1500);
+}
+function stopWatchdog(){
+  if (keepTimer){ clearInterval(keepTimer); keepTimer=null; }
+}
+
+// 언어 변경 시 재생성
+els.lang?.addEventListener('change', ()=>{
   try { recog?.stop(); } catch {}
   recog = createRecognizer(els.lang.value);
 });
 
-// ===== Start/Stop 버튼 (녹음 제어만 수행) =====
+// ========== Start / Stop ==========
 btnStart.addEventListener('click', async ()=>{
+  // 초기화
   setMetrics({lenRef:'-',lenHyp:'-',score:'-',refHTML:'',hypHTML:'',notes:''});
+  finalBuf = ""; interimBuf = "";
 
   if(!supported()){
     live.textContent='이 브라우저는 음성 인식을 지원하지 않습니다. (Chrome/Edge 권장)';
@@ -289,8 +291,7 @@ btnStart.addEventListener('click', async ()=>{
   const ok = await ensureMicPermission();
   if(!ok) return;
 
-  wantRecording = true;
-  finalText = '';
+  recording = true;
   retryCount = 0;
 
   const r = ensureRecognizer();
@@ -298,53 +299,64 @@ btnStart.addEventListener('click', async ()=>{
 
   btnStart.disabled = true;
   btnStop.disabled  = true;
-  try{
-    r.start();  // onstart에서 상태 세팅
-  }catch(e){
+  try { r.start(); } catch (e) {
     log('start error', e);
     btnStart.disabled = false;
     els.notes.innerHTML = `<div class="muted">음성 인식을 시작할 수 없습니다: <code>${e?.message||e}</code></div>`;
+    recording = false;
   }
 });
 
 btnStop.addEventListener('click', ()=>{
-  wantRecording = false;
+  // 더 이상 녹음 의사 없음 → 엔진 종료 요청
+  recording = false;
   stopWatchdog();
   try { recog?.stop(); } catch {}
+
+  // 마지막 interim까지 포함해서 채점 (엔진이 끝나며 onresult 못 받을 수도 있으니 250ms 대기)
+  setTimeout(scoreNow, 250);
 });
 
-// ===== Scoring (after stop) =====
-btnStop.addEventListener('click', ()=>{
-  setTimeout(async ()=>{
-    const refText = els.ref.value.trim();
-    const hypText = finalText.trim();
-    const ignoreP = els.stripPunct.checked;
-    const allowNum = els.normalizeNum.checked;
+// ========== Scoring ==========
+function scoreNow(){
+  // 녹음된 전체 텍스트: 확정 + 미확정(있으면)
+  const hypText = (finalBuf + (interimBuf?(' '+interimBuf):'')).trim();
 
-    const lenRef = toks(ignoreP?stripPunct(refText):refText).length;
-    const lenHyp = toks(ignoreP?stripPunct(hypText):hypText).length;
+  const refText = els.ref.value.trim();
+  const ignoreP = els.stripPunct.checked;
+  const allowNum = els.normalizeNum.checked;
 
-    if(!refText || !hypText){
-      setMetrics({lenRef,lenHyp,score:'-',refHTML:refText,hypHTML:hypText,notes:`<div class="muted">대본과 발화가 모두 있어야 채점됩니다.</div>`});
-      return;
-    }
+  const lenRef = toks(ignoreP ? stripPunct(refText) : refText).length;
+  const lenHyp = toks(ignoreP ? stripPunct(hypText) : hypText).length;
 
-    if(els.mode.value==='exact'){
-      const {wer,ops,rt,ht}=calcWER(refText,hypText,{ignorePunct:ignoreP,allowNumRead:allowNum});
-      const acc = Math.max(0, Math.round((1-wer)*100));
-      const {refHTML,hypHTML}=renderDiffExact(rt,ht,ops);
-      const notes = `<div class="muted">• 정확 모드: WER 기반 (치환/삽입/삭제). <em class="sub">노란색</em>=치환, <del>빨강=누락</del>, <ins>초록=불필요</ins>. 점수=(1 - WER)×100</div>`;
-      setMetrics({lenRef:rt.length,lenHyp:ht.length,score:acc,refHTML,hypHTML,notes});
-    }else{
-      const use = await semanticScore(refText,hypText);
-      const rgL = rougeL(refText,hypText);
-      const parts=[]; if(use!==null) parts.push(use); parts.push(rgL);
+  if (!refText || !hypText){
+    setMetrics({
+      lenRef, lenHyp, score:'-',
+      refHTML: refText, hypHTML: hypText,
+      notes: `<div class="muted">대본과 발화가 모두 있어야 채점됩니다.</div>`
+    });
+    return;
+  }
+
+  if (els.mode.value === 'exact'){
+    const {wer, ops, rt, ht} = calcWER(refText, hypText, {ignorePunct:ignoreP, allowNumRead:allowNum});
+    const acc = Math.max(0, Math.round((1-wer)*100));
+    const {refHTML, hypHTML} = renderDiffExact(rt, ht, ops);
+    const notes = `<div class="muted">• 정확 모드: WER 기반 (치환/삽입/삭제). 점수=(1 - WER)×100</div>`;
+    setMetrics({ lenRef: rt.length, lenHyp: ht.length, score: acc, refHTML, hypHTML, notes });
+  }else{
+    // 내용만: USE + ROUGE-L 평균 (USE 로드 실패 시 ROUGE-L만)
+    Promise.resolve().then(async ()=>{
+      const use = await semanticScore(refText, hypText);
+      const rgL = rougeL(refText, hypText);
+      const parts = []; if (use !== null) parts.push(use); parts.push(rgL);
       const acc = Math.round(parts.reduce((a,b)=>a+b,0)/parts.length);
 
-      const {ops,rt,ht}=calcWER(refText,hypText,{ignorePunct:true,allowNumRead:true});
-      const {refHTML,hypHTML}=renderDiffExact(rt,ht,ops);
+      const {ops, rt, ht} = calcWER(refText, hypText, {ignorePunct:true, allowNumRead:true});
+      const {refHTML, hypHTML} = renderDiffExact(rt, ht, ops);
       const notes = `<div class="muted">• 내용만: USE 코사인 + ROUGE-L 평균. 임베딩:${use===null?'모델 로드 실패':use+'/100'} · ROUGE-L:${rgL}/100</div>`;
-      setMetrics({lenRef,lenHyp,score:acc,refHTML,hypHTML,notes});
-    }
-  },200);
-});
+      setMetrics({ lenRef, lenHyp, score: acc, refHTML, hypHTML, notes });
+    });
+  }
+}
+// ===== End STT + Scoring =====
