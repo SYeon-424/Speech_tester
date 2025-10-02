@@ -77,12 +77,20 @@
           <div class="muted">내 출력 길이</div>
           <div id="len-hyp" class="metric">-</div>
         </div>
-        <div>
-          <div class="muted">정확도</div>
-          <div id="score" class="metric big">-</div>
+    
+        <!-- ✅ 새 점수 카드 -->
+        <div class="score-wrap">
+          <div id="score-ring" class="score-ring" role="img" aria-label="정확도 링">
+            <div class="txt"><span id="score">-</span></div>
+          </div>
+          <div class="score-legend">
+            <span class="badge">치환 <span style="color:#ffd565">노랑</span></span>
+            <span class="badge">누락 <span style="color:#ff8fa1">빨강</span></span>
+            <span class="badge">불필요 <span style="color:#9af3c7">초록</span></span>
+          </div>
         </div>
       </div>
-
+    
       <details open>
         <summary>어디가 틀렸나 보기</summary>
         <div class="diff-wrap">
@@ -96,9 +104,10 @@
           </div>
         </div>
       </details>
-
+    
       <div id="notes" class="notes"></div>
     </section>
+
 
     <footer class="muted small">
       오프라인 동작/설치 가능 • 브라우저 음성인식(Web Speech API) 사용 • GitHub Pages 호환
