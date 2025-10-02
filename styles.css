@@ -165,3 +165,21 @@ footer{ margin-top: 10px; }
   .diff-wrap{ grid-template-columns: 1fr; }
   .top{ flex-direction: column; align-items: flex-start; gap:8px; }
 }
+
+/* 토큰 표시 스타일 */
+span.sub {
+  color: #ffd54f; /* 노랑 */
+  font-weight: 600;
+}
+span.del {
+  color: #ff5c6c; /* 빨강 */
+  font-weight: 600;
+}
+span.match {
+  color: #22c55e; /* 초록 */
+  font-weight: 600;
+}
+span.ins {
+  color: #9ca3af; /* 회색 (tailwind gray-400 비슷) */
+  font-weight: 600;
+}
