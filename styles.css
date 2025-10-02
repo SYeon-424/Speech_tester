@@ -130,7 +130,14 @@ button:disabled{ opacity:.55; cursor:not-allowed; }
 }
 .score-ring .txt{ font-weight:700; font-size:1.25rem; }
 .score-legend{ display:flex; gap:8px; color:var(--muted); font-size:.9rem; }
-.badge{ padding:4px 8px; border-radius:999px; border:1px solid var(--border); background:#0d1320; }
+.badge {
+  padding: 2px 6px;      /* ← 세로/가로 패딩 줄임 */
+  border-radius: 12px;   /* ← 원형 보다는 작은 알약 */
+  border: 1px solid var(--border);
+  background: #0d1320;
+  font-size: 0.8rem;     /* ← 글자도 살짝 작게 */
+  line-height: 1.2;      /* 높이 조정 */
+}
 
 /* Diff viewer */
 .diff-wrap{
