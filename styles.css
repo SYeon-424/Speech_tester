@@ -56,20 +56,36 @@ button:disabled{opacity:.55; cursor:not-allowed;}
 .grid{display:grid; gap:14px; grid-template-columns:repeat(3,minmax(0,1fr));}
 .metric{font-weight:600; font-size:1.2rem;}
 
-/* Score ring (앞의 큰 동그라미: 여기만 조절하면 됨) */
-.score-wrap{display:flex; align-items:center; gap:8px;}
+/* Score ring (responsive, smaller on mobile) */
+.score-wrap{
+  display:flex; align-items:center; gap:6px;  /* 간격도 살짝 축소 */
+  flex-wrap: wrap;                            /* 좁은 화면에서 줄바꿈 허용 */
+}
 .score-ring{
-  --p:0;            /* 채움 비율(0~100) */
-  --ring:64px;      /* ⬅️ 원 크기 (원하면 56px/60px/72px 등으로만 바꿔도 OK) */
-  width:var(--ring); height:var(--ring); border-radius:50%;
+  --p: 0;                                     /* 채움 비율(0~100) */
+  width: clamp(42px, 18vw, 64px);             /* ⬅️ 화면 너비에 따라 자동 축소 */
+  height: clamp(42px, 18vw, 64px);
+  border-radius: 50%;
   background:
     conic-gradient(var(--primary) calc(var(--p)*1%), rgba(255,255,255,.08) 0),
-    radial-gradient(closest-side, #0f1320 78%, transparent 79% 100%),
+    radial-gradient(closest-side, #0f1320 80%, transparent 81% 100%), /* 안쪽 구멍 조금 키워 더 얇게 */
     linear-gradient(180deg, rgba(255,255,255,.08), rgba(0,0,0,.12));
   display:grid; place-items:center;
-  border:1px solid var(--border); box-shadow:var(--shadow);
+  border:1px solid var(--border);
+  box-shadow: var(--shadow);
 }
-.score-ring .txt{font-weight:700; font-size:1rem;}
+.score-ring .txt{
+  font-weight:700;
+  font-size: clamp(.80rem, 3.6vw, 1rem);      /* 숫자도 같이 축소 */
+}
+
+/* 아주 작은 기기(아이폰 SE 등)에서 더 작게 */
+@media (max-width: 360px){
+  .score-ring{ width: 38px; height: 38px; }
+  .score-ring .txt{ font-size: .78rem; }
+  .score-legend{ gap:6px; }
+  .badge{ padding:1px 4px; font-size:.74rem; border-radius:8px; }
+}
 
 .score-legend{display:flex; gap:8px; color:var(--muted); font-size:.9rem;}
 .badge{padding:2px 6px; border-radius:12px; border:1px solid var(--border); background:#0d1320; font-size:.8rem; line-height:1.2;}
