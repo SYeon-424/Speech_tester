@@ -183,3 +183,17 @@ span.ins {
   color: #9ca3af; /* 회색 (tailwind gray-400 비슷) */
   font-weight: 600;
 }
+
+span.sub   { color: #ffd54f; font-weight:600; }  /* 치환=노랑 */
+span.del   { color: #ff5c6c; font-weight:600; }  /* 누락=빨강 */
+span.match { color: #22c55e; font-weight:600; }  /* 일치=초록 */
+span.ins   { color: #9ca3af; font-weight:600; }  /* 삽입=회색 */
+
+/* 뱃지는 배경만 살짝, 글자색은 위에서 적용됨 */
+.badge {
+  padding:4px 8px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:#0d1320;
+  font-size:.9rem;
+}
