@@ -125,12 +125,6 @@ const els = {
   stripPunct: reqEl('strip-punct'),
   normalizeNum: reqEl('normalize-num'),
 };
-function setScoreRing(pct){
-  const ring = document.getElementById('score-ring');
-  if(!ring) return;
-  const p = Math.max(0, Math.min(100, Number(pct) || 0));
-  ring.style.setProperty('--p', p);
-}
 
 function setMetrics({lenRef, lenHyp, score, refHTML, hypHTML, notes}) {
   els.lenRef.textContent = lenRef ?? '-';
