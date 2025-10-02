@@ -45,17 +45,39 @@ function calcWER(ref,hyp,{ignorePunct=true,allowNumRead=true}={}){
   const wer = rt.length ? distance/rt.length : (ht.length?1:0);
   return {wer,ops,rt,ht};
 }
-function renderDiffExact(rt,ht,ops){
-  const R=[],H=[]; let i=0,j=0;
-  for(const op of ops){
-    if(op==='M'){ R.push(rt[i]); H.push(ht[j]); i++; j++; }
-    else if(op==='S'){ R.push(`<em class="sub">${rt[i]}</em>`); H.push(`<em class="sub">${ht[j]}</em>`); i++; j++; }
-    else if(op==='D'){ R.push(`<del>${rt[i]}</del>`); i++; }
-    else { H.push(`<ins>${ht[j]}</ins>`); j++; }
+
+function renderDiffExact(rt, ht, ops) {
+  const refOut = [];
+  const hypOut = [];
+  let i=0, j=0;
+
+  for (const op of ops){
+    if (op==='M'){ 
+      // 일치 → 초록
+      refOut.push(`<span class="match">${rt[i]}</span>`);
+      hypOut.push(`<span class="match">${ht[j]}</span>`);
+      i++; j++;
+    } else if (op==='S'){ 
+      // 치환 → 노랑
+      refOut.push(`<span class="sub">${rt[i]}</span>`);
+      hypOut.push(`<span class="sub">${ht[j]}</span>`);
+      i++; j++;
+    } else if (op==='D'){ 
+      // 누락 → 빨강
+      refOut.push(`<span class="del">${rt[i]}</span>`);
+      i++;
+    } else if (op==='I'){ 
+      // 삽입 → 회색
+      hypOut.push(`<span class="ins">${ht[j]}</span>`);
+      j++;
+    }
   }
-  for(;i<rt.length;i++) R.push(`<del>${rt[i]}</del>`);
-  for(;j<ht.length;j++) H.push(`<ins>${ht[j]}</ins>`);
-  return {refHTML:R.join(' '), hypHTML:H.join(' ')};
+
+  // 남은 토큰 처리
+  for (; i<rt.length; i++) refOut.push(`<span class="del">${rt[i]}</span>`);
+  for (; j<ht.length; j++) hypOut.push(`<span class="ins">${ht[j]}</span>`);
+
+  return { refHTML: refOut.join(' '), hypHTML: hypOut.join(' ') };
 }
 
 // ===== Semantic (USE + ROUGE-L) =====
