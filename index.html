@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>말하기 채점 PWA</title>
+
+  <meta name="theme-color" content="#111111" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="stylesheet" href="./styles.css" />
+
+  <!-- (선택) 내용 유사도용 TF.js & USE 모델: "내용만" 모드에서만 사용 -->
+  <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/universal-sentence-encoder@1.3.3/dist/universal-sentence-encoder.min.js"></script>
+</head>
+<body>
+  <main class="container">
+    <header class="top">
+      <h1>🗣️ 말하기 채점 PWA</h1>
+      <button id="btn-install" class="ghost" title="설치">설치</button>
+    </header>
+
+    <section class="card">
+      <label class="row space">
+        <span>채점 모드</span>
+        <select id="mode">
+          <option value="exact">정확 (문자 그대로)</option>
+          <option value="semantic">내용만 (요지/유사도)</option>
+        </select>
+      </label>
+
+      <label>
+        <span class="lbl">대본 (정답 텍스트)</span>
+        <textarea id="ref" rows="6" placeholder="여기에 대본(정답)을 붙여 넣으세요."></textarea>
+      </label>
+
+      <div class="row wrap">
+        <button id="btn-start" class="primary">🎙️ 말하기 시작</button>
+        <button id="btn-stop" class="danger" disabled>⏹️ 말하기 종료</button>
+        <label class="row">
+          <input type="checkbox" id="strip-punct" checked />
+          <span>문장부호/대소문자 무시</span>
+        </label>
+        <label class="row">
+          <input type="checkbox" id="normalize-num" checked />
+          <span>숫자 읽기(예: 2025→이천이십오) 허용</span>
+        </label>
+      </div>
+
+      <div class="recbox">
+        <div class="dot" id="rec-dot"></div>
+        <div>
+          <div class="muted">인식 언어: 한국어 (ko-KR)</div>
+          <div id="live" class="live">…</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>결과</h2>
+      <div class="grid">
+        <div>
+          <div class="muted">정답 길이</div>
+          <div id="len-ref" class="metric">-</div>
+        </div>
+        <div>
+          <div class="muted">내 출력 길이</div>
+          <div id="len-hyp" class="metric">-</div>
+        </div>
+        <div>
+          <div class="muted">정확도</div>
+          <div id="score" class="metric big">-</div>
+        </div>
+      </div>
+
+      <details open>
+        <summary>어디가 틀렸나 보기</summary>
+        <div class="diff-wrap">
+          <div>
+            <div class="muted">정답(Ref)</div>
+            <div id="ref-vis" class="mono box"></div>
+          </div>
+          <div>
+            <div class="muted">내 말(ASR 결과)</div>
+            <div id="hyp-vis" class="mono box"></div>
+          </div>
+        </div>
+      </details>
+
+      <div id="notes" class="notes"></div>
+    </section>
+
+    <footer class="muted small">
+      오프라인 동작/설치 가능 • 브라우저 음성인식(Web Speech API) 사용 • GitHub Pages 호환
+    </footer>
+  </main>
+
+  <script src="./app.js"></script>
+  <script>
+    // PWA: 서비스워커 등록
+    if ('serviceWorker' in navigator) {
+      addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js');
+      });
+    }
+    // 설치 버튼 제어
+    let deferredPrompt;
+    const btnInstall = document.getElementById('btn-install');
+    btnInstall.disabled = true;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault(); deferredPrompt = e; btnInstall.disabled = false;
+    });
+    btnInstall.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt(); await deferredPrompt.userChoice;
+      deferredPrompt = null; btnInstall.disabled = true;
+    });
+  </script>
+</body>
+</html>
