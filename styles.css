@@ -111,7 +111,16 @@ button:disabled{ opacity:.55; cursor:not-allowed; }
 .metric{
   font-weight:600; font-size: 1.2rem;
 }
-.metric.big{ font-size: 1.8rem; }
+.metric.big {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width: 80px;     /* ← 원 크기 줄임 */
+  height: 80px;
+  border-radius: 50%;
+  background: #1a1a1a;
+  font-size: 1.5rem;  /* 숫자 글자 크기도 줄임 */
+}
 
 /* Pretty score ring */
 .score-wrap{
