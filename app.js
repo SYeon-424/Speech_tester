@@ -118,94 +118,177 @@ function setMetrics({lenRef, lenHyp, score, refHTML, hypHTML, notes}) {
   els.hypVis.innerHTML   = hypHTML ?? '';
   els.notes.innerHTML    = notes ?? '';
 
-  // ✅ 점수 링도 같이 업데이트
+  // 점수 링 채우기
   setScoreRing(score);
 }
 
 
-// ===== Mic & STT =====
-let recog=null;           // SpeechRecognition instance
-let finalText='';         // 최종 텍스트 스냅샷
-let recognizing=false;
+// ===== Mic & STT (robust) =====
+let recog = null;           // SpeechRecognition instance
+let finalText = '';         // 최종 텍스트 스냅샷
+let recognizing = false;    // onstart~onend 사이 상태
+let wantRecording = false;  // 사용자가 Start~Stop 사이에 녹음 유지 의사
+let lastResultAt = 0;       // 마지막 결과 수신 시각(무음 워치용)
+let keepTimer = null;       // 워치독 타이머
+let retryCount = 0;         // 재시도 백오프 카운터
 
 function supported(){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   return !!SR;
 }
-function createRecognizer(lang){
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SR){
-    live.textContent='이 브라우저는 음성 인식을 지원하지 않습니다. (Chrome/Edge 권장)';
-    btnStart.disabled=true; return null;
-  }
-  const r=new SR();
-  r.lang = lang || (els.lang?.value || 'ko-KR');
-  r.interimResults=true; r.continuous=true; r.maxAlternatives=1;
 
-  r.onstart=()=>{ recognizing=true; recDot.classList.add('live'); live.textContent='듣는 중…'; finalText=''; log('onstart'); btnStop.disabled=false; };
-  r.onresult=(e)=>{
-    const res=e.results; let final='', interim='';
-    for(let i=0;i<res.length;i++){
-      const txt=res[i][0].transcript;
-      if(res[i].isFinal) final += txt + ' ';
-      else interim += txt + ' ';
-    }
-    finalText=final.trim();
-    live.textContent = finalText + (interim ? ' ' + interim.trim() : '');
-  };
-  r.onerror=(e)=>{
-    log('onerror', e);
-    if(e.error==='not-allowed' || e.error==='service-not-allowed'){
-      els.notes.innerHTML=`<div class="muted">마이크 권한이 거부되었습니다. 주소창 옆 🔒에서 권한을 허용해 주세요.</div>`;
-    }
-  };
-  r.onend=()=>{
-    recognizing=false; recDot.classList.remove('live');
-    btnStart.disabled=false; btnStop.disabled=true; log('onend');
-  };
-  return r;
-}
-els.lang?.addEventListener('change', ()=>{
-  try{ recog?.stop(); }catch{}
-  recog = createRecognizer(els.lang.value);
-});
 async function ensureMicPermission(){
   if(!navigator.mediaDevices?.getUserMedia) return true;
   try{
-    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-    stream.getTracks().forEach(t=>t.stop());
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach(t => t.stop());
     return true;
   }catch(e){
     log('getUserMedia error', e);
-    els.notes.innerHTML=`<div class="muted">마이크 접근이 필요합니다. 브라우저 권한을 허용해 주세요.</div>`;
+    els.notes.innerHTML = `<div class="muted">마이크 권한이 필요합니다. 주소창 옆 🔒에서 허용해 주세요.</div>`;
     return false;
   }
 }
 
-// ===== Main flow =====
+function startWatchdog(){
+  stopWatchdog();
+  // 4초 이상 결과가 없으면 재시작
+  keepTimer = setInterval(() => {
+    if (!wantRecording) return;
+    const idleMs = Date.now() - lastResultAt;
+    if (idleMs > 4000) {
+      log('watchdog idle', idleMs, '→ restart');
+      restartRecognizer();
+    }
+  }, 1500);
+}
+function stopWatchdog(){
+  if (keepTimer) { clearInterval(keepTimer); keepTimer = null; }
+}
+
+function createRecognizer(lang){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){
+    live.textContent = '이 브라우저는 음성 인식을 지원하지 않습니다. (Chrome/Edge 권장)';
+    btnStart.disabled = true;
+    return null;
+  }
+  const r = new SR();
+  r.lang = lang || (els.lang?.value || 'ko-KR');
+  r.interimResults = true;
+  r.continuous = true;
+  r.maxAlternatives = 1;
+
+  r.onstart = () => {
+    recognizing = true;
+    lastResultAt = Date.now();
+    recDot.classList.add('live');
+    live.textContent = '듣는 중…';
+    btnStop.disabled = false;
+    startWatchdog();
+    log('onstart');
+  };
+
+  r.onresult = (e) => {
+    const res = e.results;
+    let final = '', interim = '';
+    for (let i=0; i<res.length; i++){
+      const txt = res[i][0].transcript;
+      if (res[i].isFinal) final += txt + ' ';
+      else interim += txt + ' ';
+    }
+    finalText = final.trim();
+    live.textContent = finalText + (interim ? ' ' + interim.trim() : '');
+    lastResultAt = Date.now(); // 결과 들어오면 무음 타이머 리셋
+  };
+
+  r.onerror = (e) => {
+    log('onerror', e);
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed'){
+      els.notes.innerHTML = `<div class="muted">마이크 권한이 거부되었습니다. 주소창 옆 🔒에서 허용해 주세요.</div>`;
+    } else if (e.error === 'audio-capture') {
+      els.notes.innerHTML = `<div class="muted">마이크 장치가 감지되지 않습니다. 입력 장치를 확인해 주세요.</div>`;
+    } else if (e.error === 'no-speech') {
+      els.notes.innerHTML = `<div class="muted">음성이 감지되지 않았습니다. (자동 재시도 중)</div>`;
+    }
+    if (wantRecording) restartRecognizer();
+  };
+
+  r.onend = () => {
+    recognizing = false;
+    recDot.classList.remove('live');
+    btnStart.disabled = false;
+    btnStop.disabled = true;
+    stopWatchdog();
+    log('onend');
+    if (wantRecording) restartRecognizer(); // 정책/백그라운드로 끊겨도 복구
+  };
+
+  r.onspeechend = () => { /* 워치독이 관리하므로 noop */ };
+
+  return r;
+}
+
+function ensureRecognizer(){
+  if (recog) return recog;
+  recog = createRecognizer(els.lang?.value || 'ko-KR');
+  return recog;
+}
+
+function restartRecognizer(){
+  if (!wantRecording) return;
+  const delay = Math.min(200 + retryCount*300, 2500);
+  try { recog?.stop(); } catch {}
+  setTimeout(() => {
+    try{
+      const r = ensureRecognizer();
+      r && r.start();
+      retryCount = Math.min(retryCount + 1, 5);
+      log('restart attempt', retryCount, 'delay', delay);
+    }catch(e){
+      log('restart failed', e);
+    }
+  }, delay);
+}
+
+els.lang?.addEventListener('change', () => {
+  try { recog?.stop(); } catch {}
+  recog = createRecognizer(els.lang.value);
+});
+
+// ===== Start/Stop 버튼 (녹음 제어만 수행) =====
 btnStart.addEventListener('click', async ()=>{
   setMetrics({lenRef:'-',lenHyp:'-',score:'-',refHTML:'',hypHTML:'',notes:''});
-  if(!supported()){ live.textContent='이 브라우저는 음성 인식을 지원하지 않습니다. (Chrome/Edge 권장)'; return; }
-  if(recognizing){ log('already recognizing'); return; }
-  const ok=await ensureMicPermission(); if(!ok) return;
-  if(!recog) recog=createRecognizer(els.lang?.value || 'ko-KR');
-  btnStart.disabled=true; btnStop.disabled=true;
+
+  if(!supported()){
+    live.textContent='이 브라우저는 음성 인식을 지원하지 않습니다. (Chrome/Edge 권장)';
+    return;
+  }
+  const ok = await ensureMicPermission();
+  if(!ok) return;
+
+  wantRecording = true;
+  finalText = '';
+  retryCount = 0;
+
+  const r = ensureRecognizer();
+  if (!r) return;
+
+  btnStart.disabled = true;
+  btnStop.disabled  = true;
   try{
-    recog.start();
-    setTimeout(()=>{ if(recognizing) btnStop.disabled=false; },150);
+    r.start();  // onstart에서 상태 세팅
   }catch(e){
     log('start error', e);
-    btnStart.disabled=false;
-    els.notes.innerHTML=`<div class="muted">음성 인식을 시작할 수 없습니다: <code>${e?.message||e}</code></div>`;
+    btnStart.disabled = false;
+    els.notes.innerHTML = `<div class="muted">음성 인식을 시작할 수 없습니다: <code>${e?.message||e}</code></div>`;
   }
 });
-btnStop.addEventListener('click', ()=>{ try{ recog?.stop(); }catch{} });
 
-// 탭 전환 시 자동 종료
-document.addEventListener('visibilitychange', ()=>{
-  if(document.visibilityState!=='visible' && recognizing){
-    try{ recog?.stop(); }catch{}
-  }
+btnStop.addEventListener('click', ()=>{
+  wantRecording = false;
+  stopWatchdog();
+  try { recog?.stop(); } catch {}
 });
 
 // ===== Scoring (after stop) =====
